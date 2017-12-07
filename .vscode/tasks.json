@@ -4,14 +4,21 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build",
+            "label": "run",
             "type": "shell",
-            "command": "sbt compile",
+            "command": "sbt run",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "sbt compile",
+            "problemMatcher": [],
+            "group": "build"
         }
     ]
 }
