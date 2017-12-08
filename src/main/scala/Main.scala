@@ -12,9 +12,11 @@ case class SearchResponse(helpUrl: String, className: String, methodName: String
 
 object KGoogle {
 
+  import Effects._
+
   def convertToDescription(text: String): Option[SearchRequest] = ???
 
-  def search(msg: SearchRequest): Future[List[SearchResponse]] = ???
+  def search(msg: SearchRequest): Effect[Future[List[SearchResponse]]] = ???
 
 }
 
@@ -24,9 +26,19 @@ object MesssageFormater {
     results match {
       case Nil => "Not found any method signatures"
       case _ => results
-        .map(x => s"``` ${x.className}.${x.methodName}```\n${x.helpUrl}")
+        .map(x => s"``` ${x.className}.${x.methodName} ```\n${x.helpUrl}")
         .mkString("\n\n")
     }
+}
+
+object Effects {
+
+  class CanThrow private[Effects]
+
+  type Effect[T] = implicit (CanThrow, ExecutionContext) => T
+
+  def effect(f: Unit => Effect[Unit]) =
+    f(Unit)(new CanThrow(), ExecutionContext.global)
 }
 
 object BotRepl {
@@ -35,8 +47,9 @@ object BotRepl {
   import com.pengrad.telegrambot.request.SendMessage
   import com.pengrad.telegrambot.model.request.ParseMode
   import collection.JavaConverters._
+  import Effects._
 
-  def repl(token: String, callback: String => Future[Option[String]])(implicit ctx: ExecutionContext): Unit = {
+  def repl(token: String, callback: String => Effect[Future[String]]): Effect[Unit] = {
     val bot = new TelegramBot(token)
     bot.setUpdatesListener(updates => { 
       val tasks =
@@ -48,8 +61,7 @@ object BotRepl {
 
       taskResult
         .foreach(xs => 
-          xs.collect { case (id, Some(text)) => (id, text) }
-            .foreach((id, text) => 
+          xs.foreach((id, text) => 
               bot.execute(new SendMessage(id, text).parseMode(ParseMode.Markdown))))
 
       UpdatesListener.CONFIRMED_UPDATES_ALL
@@ -59,22 +71,17 @@ object BotRepl {
 
 object Main {
 
-  import java.lang.System
   import KGoogle._
   import MesssageFormater._
+  import Effects._
 
-  def main(args: Array[String]): Unit = {
-    implicit val ctx = ExecutionContext.global
+  def main(args: Array[String]) = effect(_ => {
     val token = System.getenv("TELEGRAM_TOKEN")
-    BotRepl.repl(token, msg => {
-        try {
-            val r = convertToDescription(msg).get
-            val resp = search(r)
-            val resMsg = resp.map(x => Some(format(x)))
-            resMsg
-        } catch {
-          case _ => Future(None)
-        }
-    })
-  }
+    BotRepl.repl(
+      token,
+      msg => {
+        val resp = search(convertToDescription(msg).get)
+        resp.map(x => format(x))
+      })
+  })
 }
