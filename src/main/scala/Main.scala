@@ -41,7 +41,7 @@ object Effects {
     f(Unit)(new CanThrow(), ExecutionContext.global)
 }
 
-object BotRepl {
+object TelegramRepl {
 
   import com.pengrad.telegrambot.{TelegramBot, UpdatesListener}
   import com.pengrad.telegrambot.request.SendMessage
@@ -55,14 +55,14 @@ object BotRepl {
       val tasks =
         updates
           .asScala
-          .map(f => callback(f.message.text).map(x => (f.message.from.id, x)))
-      val taskResult =
-        Future.sequence(tasks)
+          .map(f => callback(f.message.text).map( (f.message.from.id, _) ))
 
-      taskResult
-        .foreach(xs => 
-          xs.foreach((id, text) => 
-              bot.execute(new SendMessage(id, text).parseMode(ParseMode.Markdown))))
+      val r =
+        for {
+          sendActions <- Future.sequence(tasks)
+          actions = sendActions.map(new SendMessage(_, _).parseMode(ParseMode.Markdown))
+        } yield actions
+      r.foreach(_.map(bot.execute))
 
       UpdatesListener.CONFIRMED_UPDATES_ALL
     })
@@ -77,11 +77,8 @@ object Main {
 
   def main(args: Array[String]) = effect(_ => {
     val token = System.getenv("TELEGRAM_TOKEN")
-    BotRepl.repl(
+    TelegramRepl.repl(
       token,
-      msg => {
-        val resp = search(convertToDescription(msg).get)
-        resp.map(x => format(x))
-      })
+      msg => search(convertToDescription(msg).get).map(format))
   })
 }
